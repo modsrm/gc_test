@@ -1,12 +1,16 @@
 #!/usr/bin/python2.7
 
 """
-This script generates Java classes of variable size.
-It takes 2 arguments:
-    class_name: the name of the class to be generated.
+This script generates Java classes whose instances are approximately of the specified size.
+2 arguments need to be provided:
+    class_name:  the name of the class to be generated.
     object_size: the size of the objects instances of this class.
-                 Note that this is an estimate based on the fact
-                 that the long primitive type in Java is 64-bits in size.
+
+NOTE: the effective size in bytes on an object depends on the JVM's specific object's layout
+      and might vary between different JVM's implementations.
+      The size of an object instance of the generated class is only an approximation
+      of its real size, based on the assumption that a long field in Java can store
+      64 bits.
 """
 
 import fileinput
