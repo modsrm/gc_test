@@ -11,11 +11,7 @@ import java.util.*;
 
 public class AllocTest
 {
-    static double heapSize = Runtime.getRuntime().freeMemory();
-
-    ArrayList<byte[]> longLived = new ArrayList<byte[]>();
-    ArrayList<byte[]> shortLived = new ArrayList<byte[]>();
-    ArrayList<byte[]> largeObjects = new ArrayList<byte[]>();
+    private final static double heapSize = Runtime.getRuntime().freeMemory();
 
     public static void main( String args[] )
     {
@@ -25,63 +21,219 @@ public class AllocTest
 
     public void start()
     {
-        // Alloc long lived objects.
-        new Thread( new LongLivedObjectsFoundry( heapSize * 0.2 ) ).start();
-        // Alloc large objects.
-        // Every 30 secs, fork thread that allocates short lived objects.
-        // Every 2 mins, replace long lived objects.
-        // Every 3 mins, replace large objects.
+        // Alloc variable size long lived objects (25% of total heap size).
+        Thread smallLongLived = new Thread( new ObjectsFoundry( "Small Long Lived", (long)(heapSize * 0.1), ObjectsFoundry.Size.SMALL ) );
+        Thread mediumLongLived = new Thread( new ObjectsFoundry( "Medium Long Lived", (long)(heapSize * 0.1), ObjectsFoundry.Size.MEDIUM ) );
+        Thread largeLongLived = new Thread( new ObjectsFoundry( "Large Long Lived", (long)(heapSize * 0.05), ObjectsFoundry.Size.LARGE ) );
+
+        // Alloc variable size short lived objects ( 65% of the total heap space ).
+        Thread smallShortLived = new Thread( new ObjectsFoundry( "Small Short Lived",  (long)(heapSize * 0.4), ObjectsFoundry.Size.SMALL ) );
+        Thread mediumShortLived = new Thread( new ObjectsFoundry( "Medium Short Lived", (long)(heapSize * 0.25), ObjectsFoundry.Size.MEDIUM ) );
+
+        printFreeMem();
+
+        // NOTE: threads are started at the same time and short and long lived foundries are interleaved.
+        // This is to guarantee that they will allocate memory concurrently in order to increase the chance
+        // of heap fragmentation when short lived objects are collected.
+        smallLongLived.start();
+        mediumShortLived.start();
+        largeLongLived.start();
+        smallShortLived.start();
+        mediumLongLived.start();
+
+        while( smallLongLived.getState() != Thread.State.WAITING ||
+               smallShortLived.getState() != Thread.State.WAITING ||
+               mediumLongLived.getState() != Thread.State.WAITING ||
+               mediumShortLived.getState() != Thread.State.WAITING ||
+               largeLongLived.getState() != Thread.State.WAITING
+             )
+        {
+            System.out.println( "Foundries are allocating...");
+            printFreeMem();
+
+            try
+            {
+                Thread.sleep( 2000 );
+            }
+            catch( InterruptedException ex )
+            {
+                AllocTest.abort( ex );
+            }
+        }
+
+        System.out.println( "Foundries have finished allocating objects..." );
+        printFreeMem();
+
+        // Notify short lived foundries. This will send out of scope ~65% of the allocated objects.
+        System.out.println( "Notify the short lived object foundries that they can finish execution..." );
+
+        synchronized( smallShortLived )
+        {
+            smallShortLived.notify();
+        }
+        synchronized( mediumShortLived )
+        {
+            mediumShortLived.notify();
+        }
+
+        calculateAllocationTime( heapSize * 0.65 );
+        try
+        {
+            Thread.sleep( 10000000 );
+        }
+        catch( Throwable t )
+        {
+        }
     }
 
-    /**
-     * This Foundry will create a certain amount of long lived objects.
-     * The objects will be kept alive for a certain amount of time.
-     * This is to mimic the fact that a certain percentage of the objects
-     * created by real world applications do survive for a certain amount of time.
-     * DaCapo and SPECjvm benchmarks showed that between 65% and 96% of objects
-     * do not survive 64KByte of allocations. This Foundry will allocate between
-     * 15 and 25% of the heap with long lived objects.
-     */
-    public class LongLivedObjectsFoundry implements Runnable
+    private void printFreeMem()
     {
-        // Foundry wake up cycle, in millis.
-        private long loopTime = 1000 ;
-        private final double longLivedObjMem;
+        System.out.println( "Free memory " + Runtime.getRuntime().freeMemory() / 1024 + " Kbytes." );
+    }
 
-        public LongLivedObjectsFoundry( double longLivedObjMem )
+    private void calculateAllocationTime( double memToAlloc )
+    {
+        // TODO: diversify the type of the objects allocated.
+
+    }
+
+
+    /**
+     * This Foundry will create a certain amount of object with the specified characteristics
+     * and then will wait to be notified.
+     * The objects will be kept alive until the ObjectFoundry is alive.
+     * To kill an ObjectsFoundry and all the objects it has allocated, sent a notify to its Thread.
+     */
+    public static class ObjectsFoundry implements Runnable
+    {
+        private final String type;
+        private final long dedicatedMem;
+
+        private final ObjectsFoundry.Size objSize;
+        private final long numObjToAlloc;
+
+        ArrayList<TestObj> objects = new ArrayList<TestObj>();
+
+        // TODO: add doc.
+        public ObjectsFoundry( String type, long dedicatedMem, ObjectsFoundry.Size objSize )
         {
-            this.longLivedObjMem = longLivedObjMem;
+            this.type = type;
+            this.dedicatedMem = dedicatedMem;
+            this.objSize = objSize;
+
+            // Estimate the amount of object that will be allocated by this foundry.
+            this.numObjToAlloc = estimateObjectsForMem( dedicatedMem , objSize );
         }
 
         public void run()
         {
-            System.out.println( "LongLivedObjectsFoundry started...\n" +
-                "The heap memory dedicated to long lived objects is " + longLivedObjMem + " bytes." );
+            System.out.println( type + " ObjectsFoundry started...\n" +
+                "The heap memory dedicated to " + type + " objects is " + dedicatedMem / 1024 + " KiB." );
 
-            while( true )
+            for( int i = 0; i < numObjToAlloc; ++i )
             {
-                // Replace long lived objects.
-                longLived.clear();
-                longLived.trimToSize();
+                objects.add( allocObj() );
 
-                double allocatedMem = 0;
-                while( longLivedObjMem > allocatedMem )
-                {
-                    longLived.add( new byte[ 1024 ] );
-                    allocatedMem += 1024;
-                }
-
-                System.out.println( "free mem " + Runtime.getRuntime().freeMemory() );
                 try
                 {
-                    Thread.sleep( loopTime );
+                    // Sleep up to 100 ms between allocations. This is to make sure that when multiple
+                    // object foundries are running at the same time, the heap allocations are interleaved.
+                    // This guarantees that the allocation of objects of the same type is not contiguous, to facilitate
+                    // heap fragmentation, which is one of the aspects of real world memory allocations.
+                    if( objSize == Size.SMALL )
+                    {
+                        Thread.sleep( 2 );
+                    }
+                    else if( objSize == Size.MEDIUM )
+                    {
+                        Thread.sleep( 40 );
+                    }
+                    else
+                    {
+                        Thread.sleep( 100 );
+                    }
                 }
                 catch( InterruptedException ex )
                 {
-                    System.err.println( "This should not have happened...\n" + ex );
-                    System.exit( 1 );
+                    AllocTest.abort( ex );
                 }
             }
+
+            System.out.println( "Allocated " + objects.size() + " objects." );
+            try
+            {
+                // Wait for notify. All objects are kept alive.
+                Thread currentThread = Thread.currentThread();
+                synchronized( currentThread )
+                {
+                    System.out.println( "Free mem " + Runtime.getRuntime().freeMemory() );
+                    currentThread.wait();
+                }
+            }
+            catch( InterruptedException ex )
+            {
+                AllocTest.abort( ex );
+            }
+
+            System.out.println( type + " ObjectsFoundry terminated..." );
+            printFreeMem();
+        }
+
+        private TestObj allocObj()
+        {
+            switch( objSize )
+            {
+                case SMALL:
+                    return new SmallObj();
+                case MEDIUM:
+                    return new MediumObj();
+                case LARGE:
+                    return new LargeObj();
+                case HUGE:
+                    return new HugeObj();
+                default:
+                    AllocTest.abort( new Throwable( "Invalid object size." ) );
+            }
+            return null;
+        }
+
+        public enum Size
+        {
+            SMALL( "Small", 128 ),
+            MEDIUM( "Medium", 2048 ),
+            LARGE( "Large", 4096 ),
+            HUGE( "Huge", 4096*16 );
+
+            private final String name;
+            private final int bytesCount;
+
+            private Size( String name, int bytesCount )
+            {
+                this.name = name;
+                this.bytesCount = bytesCount;
+            }
+
+            public int getByteCount()
+            {
+                return bytesCount;
+            }
+
+            public String toString()
+            {
+                return name;
+            }
+        }
+
+        public long estimateObjectsForMem( long memory, ObjectsFoundry.Size objSize )
+        {
+            return memory / objSize.getByteCount();
         }
     }
+
+    private static void abort( Throwable t )
+    {
+        System.err.println( "This should not have happened...\n" + t );
+        System.exit( 1 );
+    }
 }
+
