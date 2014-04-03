@@ -16,10 +16,35 @@ public class AllocTest
     public static void main( String args[] )
     {
         AllocTest ac = new AllocTest();
-        ac.start();
+        //ac.calculateMaxObjectsInHeap( ObjectsFoundry.Size.MEDIUM );
+        //ac.calculateMaxObjectsInHeap( ObjectsFoundry.Size.MEDIUM );
+        ac.timeAllocationInRealWorldScenario();
     }
 
-    public void start()
+    public void calculateMaxObjectsInHeap( ObjectsFoundry.Size sizeRange )
+    {
+        ArrayList<TestObj> objects = new ArrayList<TestObj>();
+        long count = 0;
+
+        try
+        {
+            while( true )
+            {
+                objects.add( ObjectsFoundry.allocObj( sizeRange ) );
+                ++count;
+            }
+        }
+        catch( OutOfMemoryError err )
+        {
+            objects.clear();
+            objects = null;
+        }
+
+        System.out.println( count + " objects of size " + sizeRange.getSizeInBytes() +
+                " allocated in a heap of " + Runtime.getRuntime().totalMemory() );
+    }
+
+    public void timeAllocationInRealWorldScenario()
     {
         // Alloc variable size long lived objects (25% of total heap size).
         Thread smallLongLived = new Thread( new ObjectsFoundry( "Small Long Lived", (long)(heapSize * 0.1), ObjectsFoundry.Size.SMALL ) );
@@ -27,8 +52,8 @@ public class AllocTest
         Thread largeLongLived = new Thread( new ObjectsFoundry( "Large Long Lived", (long)(heapSize * 0.05), ObjectsFoundry.Size.LARGE ) );
 
         // Alloc variable size short lived objects ( 65% of the total heap space ).
-        Thread smallShortLived = new Thread( new ObjectsFoundry( "Small Short Lived",  (long)(heapSize * 0.4), ObjectsFoundry.Size.SMALL ) );
-        Thread mediumShortLived = new Thread( new ObjectsFoundry( "Medium Short Lived", (long)(heapSize * 0.25), ObjectsFoundry.Size.MEDIUM ) );
+        Thread smallShortLived = new Thread( new ObjectsFoundry( "Small Short Lived",  (long)(heapSize * 0.2), ObjectsFoundry.Size.SMALL ) );
+        Thread mediumShortLived = new Thread( new ObjectsFoundry( "Medium Short Lived", (long)(heapSize * 0.45), ObjectsFoundry.Size.MEDIUM ) );
 
         printFreeMem();
 
@@ -48,12 +73,12 @@ public class AllocTest
                largeLongLived.getState() != Thread.State.WAITING
              )
         {
-            System.out.println( "Foundries are allocating...");
+            // Prints stats.
             printFreeMem();
 
             try
             {
-                Thread.sleep( 2000 );
+                Thread.sleep( 8000 );
             }
             catch( InterruptedException ex )
             {
@@ -70,33 +95,41 @@ public class AllocTest
         synchronized( smallShortLived )
         {
             smallShortLived.notify();
+            smallShortLived = null;
         }
         synchronized( mediumShortLived )
         {
             mediumShortLived.notify();
+            mediumShortLived = null;
         }
 
-        calculateAllocationTime( heapSize * 0.65 );
-        try
-        {
-            Thread.sleep( 10000000 );
-        }
-        catch( Throwable t )
-        {
-        }
+        calculateAllocationTime( heapSize * 0.45 );
     }
 
-    private void printFreeMem()
+    private static void printFreeMem()
     {
         System.out.println( "Free memory " + Runtime.getRuntime().freeMemory() / 1024 + " Kbytes." );
     }
 
     private void calculateAllocationTime( double memToAlloc )
     {
-        // TODO: diversify the type of the objects allocated.
 
+        int objToAlloc = (int)memToAlloc / ObjectsFoundry.Size.MEDIUM.getSizeInBytes();
+
+        TestObj objects[] = new TestObj[ objToAlloc ];
+
+        long start = System.currentTimeMillis();
+        int i = 0;
+        for( ; i < objToAlloc; ++i )
+        {
+            objects[ i ] = new MediumObj();
+
+        }
+        long allocTime = System.currentTimeMillis() - start;
+
+        System.out.println( "Allocated " + i + " in " + allocTime + " ms." );
+        printFreeMem();
     }
-
 
     /**
      * This Foundry will create a certain amount of object with the specified characteristics
@@ -109,20 +142,20 @@ public class AllocTest
         private final String type;
         private final long dedicatedMem;
 
-        private final ObjectsFoundry.Size objSize;
+        private final ObjectsFoundry.Size sizeRange;
         private final long numObjToAlloc;
 
         ArrayList<TestObj> objects = new ArrayList<TestObj>();
 
         // TODO: add doc.
-        public ObjectsFoundry( String type, long dedicatedMem, ObjectsFoundry.Size objSize )
+        public ObjectsFoundry( String type, long dedicatedMem, ObjectsFoundry.Size sizeRange )
         {
             this.type = type;
             this.dedicatedMem = dedicatedMem;
-            this.objSize = objSize;
+            this.sizeRange = sizeRange;
 
             // Estimate the amount of object that will be allocated by this foundry.
-            this.numObjToAlloc = estimateObjectsForMem( dedicatedMem , objSize );
+            this.numObjToAlloc = estimateObjectsForMem( dedicatedMem , sizeRange );
         }
 
         public void run()
@@ -132,7 +165,15 @@ public class AllocTest
 
             for( int i = 0; i < numObjToAlloc; ++i )
             {
-                objects.add( allocObj() );
+                try
+                {
+                    objects.add( allocObj( sizeRange ) );
+                }
+                catch( OutOfMemoryError err )
+                {
+                    System.out.println( "The " + type + " ObjectFoundry terminated because of OOM" );
+                    break;
+                }
 
                 try
                 {
@@ -140,17 +181,14 @@ public class AllocTest
                     // object foundries are running at the same time, the heap allocations are interleaved.
                     // This guarantees that the allocation of objects of the same type is not contiguous, to facilitate
                     // heap fragmentation, which is one of the aspects of real world memory allocations.
-                    if( objSize == Size.SMALL )
+                    if( sizeRange == Size.MEDIUM )
                     {
-                        Thread.sleep( 2 );
+                        Thread.sleep( 5 );
                     }
-                    else if( objSize == Size.MEDIUM )
+                    else if( sizeRange == Size.LARGE ||
+                             sizeRange == Size.HUGE )
                     {
-                        Thread.sleep( 40 );
-                    }
-                    else
-                    {
-                        Thread.sleep( 100 );
+                        Thread.sleep( 30 );
                     }
                 }
                 catch( InterruptedException ex )
@@ -159,14 +197,13 @@ public class AllocTest
                 }
             }
 
-            System.out.println( "Allocated " + objects.size() + " objects." );
+            System.out.println( "Allocated " + objects.size() + " " + sizeRange + " objects." );
             try
             {
                 // Wait for notify. All objects are kept alive.
                 Thread currentThread = Thread.currentThread();
                 synchronized( currentThread )
                 {
-                    System.out.println( "Free mem " + Runtime.getRuntime().freeMemory() );
                     currentThread.wait();
                 }
             }
@@ -179,9 +216,9 @@ public class AllocTest
             printFreeMem();
         }
 
-        private TestObj allocObj()
+        public static TestObj allocObj( Size sizeRange )
         {
-            switch( objSize )
+            switch( sizeRange )
             {
                 case SMALL:
                     return new SmallObj();
@@ -192,17 +229,20 @@ public class AllocTest
                 case HUGE:
                     return new HugeObj();
                 default:
-                    AllocTest.abort( new Throwable( "Invalid object size." ) );
+                    AllocTest.abort( new Throwable( "Invalid object size range." ) );
             }
             return null;
         }
 
+        // TODO: change objects size to mimic papers results.
         public enum Size
         {
-            SMALL( "Small", 128 ),
-            MEDIUM( "Medium", 2048 ),
-            LARGE( "Large", 4096 ),
-            HUGE( "Huge", 4096*16 );
+            // The size of the objects is based on the empiric
+            // observarions made by several studies (Dan Lo et al., Guiton et al., Blackburn et al.).
+            SMALL( "Small", 8 ),
+            MEDIUM( "Average", 32 ),
+            LARGE( "Large", 256 ),
+            HUGE( "Huge", 4096*2 );
 
             private final String name;
             private final int bytesCount;
@@ -213,7 +253,7 @@ public class AllocTest
                 this.bytesCount = bytesCount;
             }
 
-            public int getByteCount()
+            public int getSizeInBytes()
             {
                 return bytesCount;
             }
@@ -224,9 +264,9 @@ public class AllocTest
             }
         }
 
-        public long estimateObjectsForMem( long memory, ObjectsFoundry.Size objSize )
+        public long estimateObjectsForMem( long memory, ObjectsFoundry.Size sizeRange )
         {
-            return memory / objSize.getByteCount();
+            return memory / sizeRange.getSizeInBytes();
         }
     }
 
@@ -235,5 +275,14 @@ public class AllocTest
         System.err.println( "This should not have happened...\n" + t );
         System.exit( 1 );
     }
+
+    // ****Object classes****
+
+    // The size of the resulting object is estimated based on the
+    // fact that the Java language specification requires that
+    // long fields are 8 bytes in size.
+    // Note that the effective size of the object on in memory is influenced by
+    // the object's header size, which is completely implementation specific.
+
 }
 
