@@ -5,7 +5,7 @@ import java.util.*;
  * The aim of this test is to recreate a real world scenario of a multithreaded application
  * that creates objects of different size and with different lifetime.
  *
- * The test parameters are memory allocation time and (TODO) gc pause.
+ * The test parameters are memory allocation time and maximum allocated objects.
  *
  */
 
@@ -47,13 +47,13 @@ public class AllocTest
     public void timeAllocationInRealWorldScenario()
     {
         // Alloc variable size long lived objects (25% of total heap size).
-        Thread smallLongLived = new Thread( new ObjectsFoundry( "Small Long Lived", (long)(heapSize * 0.1), ObjectsFoundry.Size.SMALL ) );
-        Thread mediumLongLived = new Thread( new ObjectsFoundry( "Medium Long Lived", (long)(heapSize * 0.1), ObjectsFoundry.Size.MEDIUM ) );
-        Thread largeLongLived = new Thread( new ObjectsFoundry( "Large Long Lived", (long)(heapSize * 0.05), ObjectsFoundry.Size.LARGE ) );
+        Thread smallLongLived = new Thread( new ObjectsFoundry( "Small Long Lived", (long)(heapSize * 0.05), ObjectsFoundry.Size.SMALL ) );
+        Thread averageLongLived = new Thread( new ObjectsFoundry( "Average Long Lived", (long)(heapSize * 0.17), ObjectsFoundry.Size.AVERAGE ) );
+        Thread largeLongLived = new Thread( new ObjectsFoundry( "Large Long Lived", (long)(heapSize * 0.03), ObjectsFoundry.Size.LARGE ) );
 
         // Alloc variable size short lived objects ( 65% of the total heap space ).
         Thread smallShortLived = new Thread( new ObjectsFoundry( "Small Short Lived",  (long)(heapSize * 0.2), ObjectsFoundry.Size.SMALL ) );
-        Thread mediumShortLived = new Thread( new ObjectsFoundry( "Medium Short Lived", (long)(heapSize * 0.45), ObjectsFoundry.Size.MEDIUM ) );
+        Thread averageShortLived = new Thread( new ObjectsFoundry( "Average Short Lived", (long)(heapSize * 0.45), ObjectsFoundry.Size.AVERAGE ) );
 
         printFreeMem();
 
@@ -61,15 +61,16 @@ public class AllocTest
         // This is to guarantee that they will allocate memory concurrently in order to increase the chance
         // of heap fragmentation when short lived objects are collected.
         smallLongLived.start();
-        mediumShortLived.start();
+        averageShortLived.start();
         largeLongLived.start();
         smallShortLived.start();
-        mediumLongLived.start();
+        averageLongLived.start();
 
+        // Loop until all the ObjectsFoundry have finished allocating objects.
         while( smallLongLived.getState() != Thread.State.WAITING ||
                smallShortLived.getState() != Thread.State.WAITING ||
-               mediumLongLived.getState() != Thread.State.WAITING ||
-               mediumShortLived.getState() != Thread.State.WAITING ||
+               averageLongLived.getState() != Thread.State.WAITING ||
+               averageShortLived.getState() != Thread.State.WAITING ||
                largeLongLived.getState() != Thread.State.WAITING
              )
         {
@@ -97,12 +98,13 @@ public class AllocTest
             smallShortLived.notify();
             smallShortLived = null;
         }
-        synchronized( mediumShortLived )
+        synchronized( averageShortLived )
         {
-            mediumShortLived.notify();
-            mediumShortLived = null;
+            averageShortLived.notify();
+            averageShortLived = null;
         }
 
+        // Reallocate 45% of the heap.
         calculateAllocationTime( heapSize * 0.45 );
     }
 
@@ -114,7 +116,7 @@ public class AllocTest
     private void calculateAllocationTime( double memToAlloc )
     {
 
-        int objToAlloc = (int)memToAlloc / ObjectsFoundry.Size.MEDIUM.getSizeInBytes();
+        int objToAlloc = (int)memToAlloc / ObjectsFoundry.Size.AVERAGE.getSizeInBytes();
 
         TestObj objects[] = new TestObj[ objToAlloc ];
 
@@ -122,7 +124,7 @@ public class AllocTest
         int i = 0;
         for( ; i < objToAlloc; ++i )
         {
-            objects[ i ] = new MediumObj();
+            objects[ i ] = new AverageObj();
 
         }
         long allocTime = System.currentTimeMillis() - start;
@@ -181,14 +183,14 @@ public class AllocTest
                     // object foundries are running at the same time, the heap allocations are interleaved.
                     // This guarantees that the allocation of objects of the same type is not contiguous, to facilitate
                     // heap fragmentation, which is one of the aspects of real world memory allocations.
-                    if( sizeRange == Size.MEDIUM )
+                    if( sizeRange == Size.AVERAGE )
                     {
                         Thread.sleep( 5 );
                     }
                     else if( sizeRange == Size.LARGE ||
                              sizeRange == Size.HUGE )
                     {
-                        Thread.sleep( 30 );
+                        Thread.sleep( 10 );
                     }
                 }
                 catch( InterruptedException ex )
@@ -222,8 +224,8 @@ public class AllocTest
             {
                 case SMALL:
                     return new SmallObj();
-                case MEDIUM:
-                    return new MediumObj();
+                case AVERAGE:
+                    return new AverageObj();
                 case LARGE:
                     return new LargeObj();
                 case HUGE:
@@ -240,7 +242,7 @@ public class AllocTest
             // The size of the objects is based on the empiric
             // observarions made by several studies (Dan Lo et al., Guiton et al., Blackburn et al.).
             SMALL( "Small", 8 ),
-            MEDIUM( "Average", 32 ),
+            AVERAGE( "Average", 32 ),
             LARGE( "Large", 256 ),
             HUGE( "Huge", 4096*2 );
 
@@ -276,13 +278,11 @@ public class AllocTest
         System.exit( 1 );
     }
 
-    // ****Object classes****
+    // ######## Test classes  ########
 
-    // The size of the resulting object is estimated based on the
-    // fact that the Java language specification requires that
-    // long fields are 8 bytes in size.
-    // Note that the effective size of the object on in memory is influenced by
-    // the object's header size, which is completely implementation specific.
+    // The base class for the test objects is defined here.
+    // The 4 different class size are autogenerated with a python script.
 
+    static class TestObj {}
 }
 
