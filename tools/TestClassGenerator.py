@@ -39,9 +39,9 @@ def write_footer( file ):
 def print_help():
     print 'TestClassGenerator.py -n <class_name> -s <object_size>'
 
-def main(argv):
+def run(argv):
     class_name = ''
-    object_size = ''
+    object_size = 0
 
     try:
         opts, args = getopt.getopt(argv, 'hn:s:', ['cname=', 'osize='])
@@ -69,4 +69,4 @@ def main(argv):
     file.close()
 
 if __name__ == '__main__':
-    main( sys.argv[1:] )
+    run( sys.argv[1:] )
