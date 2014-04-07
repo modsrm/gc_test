@@ -46,29 +46,32 @@ public class AllocTest
 
     public void timeAllocationInRealWorldScenario()
     {
-        // Alloc variable size long lived objects (25% of total heap size).
-        Thread smallLongLived = new Thread( new ObjectsFoundry( "Small Long Lived", (long)(heapSize * 0.05), ObjectsFoundry.Size.SMALL ) );
-        Thread averageLongLived = new Thread( new ObjectsFoundry( "Average Long Lived", (long)(heapSize * 0.17), ObjectsFoundry.Size.AVERAGE ) );
-        Thread largeLongLived = new Thread( new ObjectsFoundry( "Large Long Lived", (long)(heapSize * 0.03), ObjectsFoundry.Size.LARGE ) );
+        // Alloc variable size long lived objects (13% of total heap size).
+        Thread averageLongLived = new Thread( new ObjectsFoundry( "Average Long Lived",
+                    (long)(heapSize * 0.10), ObjectsFoundry.Size.AVERAGE ) );
 
-        // Alloc variable size short lived objects ( 65% of the total heap space ).
-        Thread smallShortLived = new Thread( new ObjectsFoundry( "Small Short Lived",  (long)(heapSize * 0.2), ObjectsFoundry.Size.SMALL ) );
-        Thread averageShortLived = new Thread( new ObjectsFoundry( "Average Short Lived", (long)(heapSize * 0.45), ObjectsFoundry.Size.AVERAGE ) );
+        Thread largeLongLived = new Thread( new ObjectsFoundry( "Large Long Lived",
+                    (long)(heapSize * 0.03), ObjectsFoundry.Size.LARGE ) );
+
+        // Allocate variable size short lived objects (45% of total heap size).
+        Thread averageShortLived = new Thread( new ObjectsFoundry( "Average Short Lived",
+                    (long)(heapSize * 0.35), ObjectsFoundry.Size.AVERAGE ) );
+
+        Thread largeShortLived = new Thread( new ObjectsFoundry( "Large Short Lived",
+                   (long)(heapSize * 0.10), ObjectsFoundry.Size.LARGE ) );
 
         printFreeMem();
 
         // NOTE: threads are started at the same time and short and long lived foundries are interleaved.
         // This is to guarantee that they will allocate memory concurrently in order to increase the chance
         // of heap fragmentation when short lived objects are collected.
-        smallLongLived.start();
+        largeShortLived.start();
         averageShortLived.start();
         largeLongLived.start();
-        smallShortLived.start();
         averageLongLived.start();
 
         // Loop until all the ObjectsFoundry have finished allocating objects.
-        while( smallLongLived.getState() != Thread.State.WAITING ||
-               smallShortLived.getState() != Thread.State.WAITING ||
+        while( largeShortLived.getState() != Thread.State.WAITING ||
                averageLongLived.getState() != Thread.State.WAITING ||
                averageShortLived.getState() != Thread.State.WAITING ||
                largeLongLived.getState() != Thread.State.WAITING
@@ -90,13 +93,13 @@ public class AllocTest
         System.out.println( "Foundries have finished allocating objects..." );
         printFreeMem();
 
-        // Notify short lived foundries. This will send out of scope ~65% of the allocated objects.
+        // Notify short lived foundries. This will send out of scope ~45% of the allocated objects.
         System.out.println( "Notify the short lived object foundries that they can finish execution..." );
 
-        synchronized( smallShortLived )
+        synchronized( largeShortLived )
         {
-            smallShortLived.notify();
-            smallShortLived = null;
+            largeShortLived.notify();
+            largeShortLived = null;
         }
         synchronized( averageShortLived )
         {
@@ -104,8 +107,8 @@ public class AllocTest
             averageShortLived = null;
         }
 
-        // Reallocate 45% of the heap.
-        calculateAllocationTime( heapSize * 0.45 );
+        // Reallocate 40% of the heap.
+        calculateAllocationTime( heapSize * 0.40, ObjectsFoundry.Size.AVERAGE );
     }
 
     private static void printFreeMem()
@@ -113,23 +116,33 @@ public class AllocTest
         System.out.println( "Free memory " + Runtime.getRuntime().freeMemory() / 1024 + " Kbytes." );
     }
 
-    private void calculateAllocationTime( double memToAlloc )
+    private void calculateAllocationTime( double memToAlloc, ObjectsFoundry.Size sizeRange )
     {
 
-        int objToAlloc = (int)memToAlloc / ObjectsFoundry.Size.AVERAGE.getSizeInBytes();
+        int objToAlloc = (int)memToAlloc / sizeRange.getSizeInBytes();
 
         TestObj objects[] = new TestObj[ objToAlloc ];
 
         long start = System.currentTimeMillis();
-        int i = 0;
-        for( ; i < objToAlloc; ++i )
+        int count = 0;
+        try
         {
-            objects[ i ] = new AverageObj();
+            for( ; count < objToAlloc; ++count )
+            {
+                objects[ count ] = new AverageObj();
 
+            }
         }
+        catch( OutOfMemoryError err )
+        {
+            System.out.println( "Allocation Time test: OOM!!!" );
+        }
+
         long allocTime = System.currentTimeMillis() - start;
 
-        System.out.println( "Allocated " + i + " in " + allocTime + " ms." );
+        System.out.println( "Allocated " + count + " " + sizeRange +
+                " objects in " + allocTime + " ms." );
+
         printFreeMem();
     }
 
@@ -149,7 +162,6 @@ public class AllocTest
 
         ArrayList<TestObj> objects = new ArrayList<TestObj>();
 
-        // TODO: add doc.
         public ObjectsFoundry( String type, long dedicatedMem, ObjectsFoundry.Size sizeRange )
         {
             this.type = type;
@@ -173,19 +185,23 @@ public class AllocTest
                 }
                 catch( OutOfMemoryError err )
                 {
-                    System.out.println( "The " + type + " ObjectFoundry terminated because of OOM" );
+                    System.out.println( "The " + type + " ObjectFoundry terminated because of OOM." );
                     break;
                 }
 
                 try
                 {
-                    // Sleep up to 100 ms between allocations. This is to make sure that when multiple
+                    // Sleep for a while between allocations. This is to make sure that when multiple
                     // object foundries are running at the same time, the heap allocations are interleaved.
                     // This guarantees that the allocation of objects of the same type is not contiguous, to facilitate
                     // heap fragmentation, which is one of the aspects of real world memory allocations.
                     if( sizeRange == Size.AVERAGE )
                     {
-                        Thread.sleep( 5 );
+                        Thread.sleep( 1 );
+                    }
+                    else if( sizeRange == Size.SMALL )
+                    {
+                        Thread.sleep( 2 );
                     }
                     else if( sizeRange == Size.LARGE ||
                              sizeRange == Size.HUGE )
@@ -199,7 +215,9 @@ public class AllocTest
                 }
             }
 
-            System.out.println( "Allocated " + objects.size() + " " + sizeRange + " objects." );
+            System.out.println( "ObjectsFoundry: Allocated " + objects.size() +
+                    " " + sizeRange + " objects." );
+
             try
             {
                 // Wait for notify. All objects are kept alive.
@@ -236,11 +254,10 @@ public class AllocTest
             return null;
         }
 
-        // TODO: change objects size to mimic papers results.
         public enum Size
         {
             // The size of the objects is based on the empiric
-            // observarions made by several studies (Dan Lo et al., Guiton et al., Blackburn et al.).
+            // observations made by several studies (Dan Lo et al., Guiton et al., Blackburn et al.).
             SMALL( "Small", 8 ),
             AVERAGE( "Average", 32 ),
             LARGE( "Large", 256 ),
@@ -277,8 +294,6 @@ public class AllocTest
         System.err.println( "This should not have happened...\n" + t );
         System.exit( 1 );
     }
-
-    // ######## Test classes  ########
 
     // The base class for the test objects is defined here.
     // The 4 different class size are autogenerated with a python script.
