@@ -16,9 +16,29 @@ public class AllocTest
     public static void main( String args[] )
     {
         AllocTest ac = new AllocTest();
-        //ac.calculateMaxObjectsInHeap( ObjectsFoundry.Size.MEDIUM );
-        //ac.calculateMaxObjectsInHeap( ObjectsFoundry.Size.MEDIUM );
-        ac.timeAllocationInRealWorldScenario();
+
+        if( args.length < 1 )
+        {
+            System.out.println( "Please provide a test name..." );
+            System.exit( 1 );
+        }
+
+        if( args[ 0 ].equals( "maxObj" ) )
+        {
+            ac.calculateMaxObjectsInHeap( ObjectsFoundry.Size.SMALL );
+            ac.calculateMaxObjectsInHeap( ObjectsFoundry.Size.AVERAGE );
+            ac.calculateMaxObjectsInHeap( ObjectsFoundry.Size.LARGE );
+            ac.calculateMaxObjectsInHeap( ObjectsFoundry.Size.HUGE );
+        }
+        else if( args[ 0 ].equals( "allocTime" ) )
+        {
+            ac.timeAllocationInRealWorldScenario();
+        }
+        else
+        {
+            System.out.println( "Test name not recognized..." );
+            System.exit( 1 );
+        }
     }
 
     public void calculateMaxObjectsInHeap( ObjectsFoundry.Size sizeRange )
