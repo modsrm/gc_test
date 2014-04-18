@@ -6,7 +6,6 @@ import java.util.*;
  * that creates objects of different size and with different lifetime.
  *
  * The test parameters are memory allocation time and maximum allocated objects.
- *
  */
 
 public class AllocTest
@@ -33,6 +32,10 @@ public class AllocTest
         else if( args[ 0 ].equals( "allocTime" ) )
         {
             ac.timeAllocationInRealWorldScenario();
+        }
+        else if( args[ 0 ].equals( "allocCycle" ) )
+        {
+            ac.fullHeapCyclicAllocation( 3 );
         }
         else
         {
@@ -64,6 +67,67 @@ public class AllocTest
                 " allocated in a heap of " + Runtime.getRuntime().totalMemory() );
     }
 
+    // TODO: add description
+    public void fullHeapCyclicAllocation( int iterations )
+    {
+        try
+        {
+            for( int i = 0; i < iterations; ++i )
+            {
+                Thread averageSize = new Thread( new ObjectsFoundry( "Average size",
+                           (long)(heapSize * 0.4), ObjectsFoundry.Size.AVERAGE ) );
+
+                Thread largeSize = new Thread( new ObjectsFoundry( "Average size",
+                           (long)(heapSize * 0.2), ObjectsFoundry.Size.AVERAGE ) );
+
+                printFreeMem();
+
+                System.out.println( "Allocation cycle number " + i );
+                averageSize.start();
+                largeSize.start();
+
+                // Loop until all the ObjectsFoundry have finished allocating objects.
+                while( averageSize.getState() != Thread.State.WAITING ||
+                       largeSize.getState() != Thread.State.WAITING )
+                {
+                    // Prints stats.
+                    printFreeMem();
+
+                    try
+                    {
+                        Thread.sleep( 8000 );
+                    }
+                    catch( InterruptedException ex )
+                    {
+                        AllocTest.abort( ex );
+                    }
+                }
+
+                System.out.println( "Foundries have finished allocating objects..." );
+                printFreeMem();
+
+                // Notify short lived foundries. This will send out of scope ~45% of the allocated objects.
+                System.out.println( "Free all objects" );
+
+                synchronized( averageSize )
+                {
+                    averageSize.notify();
+                    averageSize = null;
+                }
+                synchronized( largeSize )
+                {
+                    largeSize.notify();
+                    largeSize = null;
+                }
+            }
+        }
+        catch( OutOfMemoryError OOMe )
+        {
+            System.out.println( "OOM!" );
+        }
+    }
+
+    // TODO: Add description
     public void timeAllocationInRealWorldScenario()
     {
         // Alloc variable size long lived objects (13% of total heap size).
@@ -167,8 +231,8 @@ public class AllocTest
     }
 
     /**
-     * This Foundry will create a certain amount of object with the specified characteristics
-     * and then will wait to be notified.
+     * This Foundry will create a certain amount of objects with the specified characteristics
+     * and then it will wait to be notified.
      * The objects will be kept alive until the ObjectFoundry is alive.
      * To kill an ObjectsFoundry and all the objects it has allocated, sent a notify to its Thread.
      */
@@ -279,7 +343,7 @@ public class AllocTest
             // The size of the objects is based on the empiric
             // observations made by several studies (Dan Lo et al., Guiton et al., Blackburn et al.).
             SMALL( "Small", 8 ),
-            AVERAGE( "Average", 32 ),
+            AVERAGE( "Average", 48 ),
             LARGE( "Large", 256 ),
             HUGE( "Huge", 4096*2 );
 
