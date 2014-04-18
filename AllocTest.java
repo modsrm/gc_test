@@ -1,16 +1,25 @@
 import java.util.*;
 
 /**
+ * This class implements the following GC tests:
  *
- * The aim of this test is to recreate a real world scenario of a multithreaded application
- * that creates objects of different size and with different lifetime.
+ * - maxObj: tests the maximum amount of objects that
+ *           can be allocated on the heap. The test is
+ *           executed over objects of different sizes and results
+ *           are printed to std out.
  *
- * The test parameters are memory allocation time and maximum allocated objects.
+ * - allocTime: tests the allocation time of a batch of
+ *              objects in a multithreaded scenario and
+ *              prints the result to std out.
+ *
+ * - allocCycle: runs several allocation cycles in a multithreaded
+ *               scenario and prints the state of the heap at certain
+ *               time intervals to std out.
+ *
  */
-
 public class AllocTest
 {
-    private final static double heapSize = Runtime.getRuntime().freeMemory();
+    private final static double HEAPSIZE = Runtime.getRuntime().freeMemory();
 
     public static void main( String args[] )
     {
@@ -44,7 +53,14 @@ public class AllocTest
         }
     }
 
-    public void calculateMaxObjectsInHeap( ObjectsFoundry.Size sizeRange )
+    /**
+     * Allocates objects of the requested size range until
+     * an OutOfMemoryError is thrown. It prints the amount
+     * of objects allocated to std out.
+     *
+     * @param sizeRange the size range of the objects that will be allocated.
+     */
+    private void calculateMaxObjectsInHeap( ObjectsFoundry.Size sizeRange )
     {
         ArrayList<TestObj> objects = new ArrayList<TestObj>();
         long count = 0;
@@ -67,18 +83,25 @@ public class AllocTest
                 " allocated in a heap of " + Runtime.getRuntime().totalMemory() );
     }
 
-    // TODO: add description
-    public void fullHeapCyclicAllocation( int iterations )
+    /**
+     * Creates 2 threads that allocate objects of different size to
+     * account for ~60% of the heap. After that all objects are garbaged.
+     * Repeats the allocation cycle for the provided amount of times.
+     * Heap free memory count is printed at intervals to std out.
+     *
+     * @param iterations the amount of allocation cycles to be executed.
+     */
+    private void fullHeapCyclicAllocation( int iterations )
     {
         try
         {
             for( int i = 0; i < iterations; ++i )
             {
                 Thread averageSize = new Thread( new ObjectsFoundry( "Average size",
-                           (long)(heapSize * 0.4), ObjectsFoundry.Size.AVERAGE ) );
+                           (long)(HEAPSIZE * 0.4), ObjectsFoundry.Size.AVERAGE ) );
 
                 Thread largeSize = new Thread( new ObjectsFoundry( "Average size",
-                           (long)(heapSize * 0.2), ObjectsFoundry.Size.AVERAGE ) );
+                           (long)(HEAPSIZE * 0.2), ObjectsFoundry.Size.AVERAGE ) );
 
                 printFreeMem();
 
@@ -106,9 +129,7 @@ public class AllocTest
                 System.out.println( "Foundries have finished allocating objects..." );
                 printFreeMem();
 
-                // Notify short lived foundries. This will send out of scope ~45% of the allocated objects.
-                System.out.println( "Free all objects" );
-
+                // Notify object foundries to garbage all the allocated objects.
                 synchronized( averageSize )
                 {
                     averageSize.notify();
@@ -127,22 +148,27 @@ public class AllocTest
         }
     }
 
-    // TODO: Add description
-    public void timeAllocationInRealWorldScenario()
+    /**
+     * Creates 4 threads that allocate objects of different size and life span
+     * to account for ~60% of the heap. After all the allocations have
+     * completed, the short lived objects are garbaged and a new batch allocation
+     * is started and timed. The allocation time is then printed to std out.
+     */
+    private void timeAllocationInRealWorldScenario()
     {
         // Alloc variable size long lived objects (13% of total heap size).
         Thread averageLongLived = new Thread( new ObjectsFoundry( "Average Long Lived",
-                    (long)(heapSize * 0.10), ObjectsFoundry.Size.AVERAGE ) );
+                    (long)(HEAPSIZE * 0.10), ObjectsFoundry.Size.AVERAGE ) );
 
         Thread largeLongLived = new Thread( new ObjectsFoundry( "Large Long Lived",
-                    (long)(heapSize * 0.03), ObjectsFoundry.Size.LARGE ) );
+                    (long)(HEAPSIZE * 0.03), ObjectsFoundry.Size.LARGE ) );
 
         // Allocate variable size short lived objects (45% of total heap size).
         Thread averageShortLived = new Thread( new ObjectsFoundry( "Average Short Lived",
-                    (long)(heapSize * 0.35), ObjectsFoundry.Size.AVERAGE ) );
+                    (long)(HEAPSIZE * 0.35), ObjectsFoundry.Size.AVERAGE ) );
 
         Thread largeShortLived = new Thread( new ObjectsFoundry( "Large Short Lived",
-                   (long)(heapSize * 0.10), ObjectsFoundry.Size.LARGE ) );
+                   (long)(HEAPSIZE * 0.10), ObjectsFoundry.Size.LARGE ) );
 
         printFreeMem();
 
@@ -192,14 +218,25 @@ public class AllocTest
         }
 
         // Reallocate 40% of the heap.
-        calculateAllocationTime( heapSize * 0.40, ObjectsFoundry.Size.AVERAGE );
+        calculateAllocationTime( HEAPSIZE * 0.40, ObjectsFoundry.Size.AVERAGE );
     }
 
+    /**
+     * Prints the free heap memory to std out, in KB.
+     */
     private static void printFreeMem()
     {
-        System.out.println( "Free memory " + Runtime.getRuntime().freeMemory() / 1024 + " Kbytes." );
+        System.out.println( "Free memory " + Runtime.getRuntime().freeMemory() / 1024 + " KB." );
     }
 
+    /**
+     * Allocates objects of the provided size range to account for the provided
+     * amount of memory.
+     * It prints the allocation time to std out.
+     *
+     * @param memToAlloc the amount of memory to be allocated, in bytes.
+     * @param sizeRange the size range of the objects to be allocated.
+     */
     private void calculateAllocationTime( double memToAlloc, ObjectsFoundry.Size sizeRange )
     {
 
@@ -253,7 +290,7 @@ public class AllocTest
             this.sizeRange = sizeRange;
 
             // Estimate the amount of object that will be allocated by this foundry.
-            this.numObjToAlloc = estimateObjectsForMem( dedicatedMem , sizeRange );
+            this.numObjToAlloc = dedicatedMem / sizeRange.getSizeInBytes();
         }
 
         public void run()
@@ -320,6 +357,12 @@ public class AllocTest
             printFreeMem();
         }
 
+        /**
+         * Allocated an object of the provides size range.
+         *
+         * @param sizeRange the size range of the object to be allocated.
+         * @return the allocated object.
+         */
         public static TestObj allocObj( Size sizeRange )
         {
             switch( sizeRange )
@@ -338,6 +381,9 @@ public class AllocTest
             return null;
         }
 
+        /**
+         * The elements of this enum represent the size of the test objects.
+         */
         public enum Size
         {
             // The size of the objects is based on the empiric
@@ -356,23 +402,31 @@ public class AllocTest
                 this.bytesCount = bytesCount;
             }
 
+            /**
+             * Returns the size in bytes of the object type.
+             *
+             * @return the size on bytes of this object type.
+             */
             public int getSizeInBytes()
             {
                 return bytesCount;
             }
 
+            @Override
             public String toString()
             {
                 return name;
             }
         }
-
-        public long estimateObjectsForMem( long memory, ObjectsFoundry.Size sizeRange )
-        {
-            return memory / sizeRange.getSizeInBytes();
-        }
     }
 
+    /**
+     * Aborts with the provided Throwable and prints the cause
+     * to std err.
+     *
+     * @param t the Trowable object cause of the abort.
+     *
+     */
     private static void abort( Throwable t )
     {
         System.err.println( "This should not have happened...\n" + t );
