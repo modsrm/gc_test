@@ -3,6 +3,6 @@
 *  Please do not edit.
 */
 
-public class #### extends AllocTest.TestObj
+public class #### extends GCTest.TestObj
 {
 

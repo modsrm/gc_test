@@ -16,14 +16,17 @@ import java.util.*;
  *               scenario and prints the state of the heap at certain
  *               time intervals to std out.
  *
+ * The test name needs to be provided as argument.
+ * Example:
+ *   java GCTest allocCycle
  */
-public class AllocTest
+public class GCTest
 {
     private final static double HEAPSIZE = Runtime.getRuntime().freeMemory();
 
     public static void main( String args[] )
     {
-        AllocTest ac = new AllocTest();
+        GCTest ac = new GCTest();
 
         if( args.length < 1 )
         {
@@ -122,7 +125,7 @@ public class AllocTest
                     }
                     catch( InterruptedException ex )
                     {
-                        AllocTest.abort( ex );
+                        GCTest.abort( ex );
                     }
                 }
 
@@ -196,7 +199,7 @@ public class AllocTest
             }
             catch( InterruptedException ex )
             {
-                AllocTest.abort( ex );
+                GCTest.abort( ex );
             }
         }
 
@@ -332,7 +335,7 @@ public class AllocTest
                 }
                 catch( InterruptedException ex )
                 {
-                    AllocTest.abort( ex );
+                    GCTest.abort( ex );
                 }
             }
 
@@ -350,7 +353,7 @@ public class AllocTest
             }
             catch( InterruptedException ex )
             {
-                AllocTest.abort( ex );
+                GCTest.abort( ex );
             }
 
             System.out.println( type + " ObjectsFoundry terminated..." );
@@ -376,7 +379,7 @@ public class AllocTest
                 case HUGE:
                     return new HugeObj();
                 default:
-                    AllocTest.abort( new Throwable( "Invalid object size range." ) );
+                    GCTest.abort( new Throwable( "Invalid object size range." ) );
             }
             return null;
         }
