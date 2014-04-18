@@ -1,16 +1,20 @@
 #!/usr/bin/python2.7
 
 """
-This script generates Java classes whose instances are approximately of the specified size.
-2 arguments need to be provided:
-    class_name:  the name of the class to be generated.
-    object_size: the size of the objects instances of this class.
+This script generates a Java class whose instances are approximately of the specified size.
+This is achieved by creating a class with a certain amount of long fields, which are
+guaranteed to be 8 bytes in size by the JVM specifications.
 
-NOTE: the effective size in bytes on an object depends on the JVM's specific object's layout
+Two arguments need to be provided:
+    class_name:  the name of the class to be generated.
+    object_size: the approximate size of the objects instances of this class.
+
+Example:
+    "TestClassGenerator.py -n LargeObj -s 256" will generate a class named
+    LargeObj with 32 fields of type long (32*8=256 bytes).
+
+NOTE: the effective size in bytes of an object depends on the JVM's specific object's layout
       and might vary between different JVM's implementations.
-      The size of an object instance of the generated class is only an approximation
-      of its real size, based on the assumption that a long field in Java can store
-      64 bits.
 """
 
 import fileinput
